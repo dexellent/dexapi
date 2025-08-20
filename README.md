@@ -119,6 +119,9 @@ X-RateLimit-Reset: 1692547200
 git clone https://github.com/dexellent/dexapi.git
 cd dexapi
 
+# Run dev environment (postgres, redis)
+docker-compose up -d
+
 # Run with Maven
 ./mvnw spring-boot:run
 
