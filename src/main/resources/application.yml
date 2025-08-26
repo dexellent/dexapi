@@ -57,6 +57,11 @@ spring:
       time-to-live: 600000 # 10 minutes default
       cache-null-values: false
 
+  thymeleaf:
+    prefix: classpath:/templates/
+    suffix: .html
+    mode: HTML
+
   jackson:
     serialization:
       write-dates-as-timestamps: false
@@ -73,6 +78,18 @@ server:
     enabled: true
     mime-types: application/json,application/xml,text/html,text/xml,text/plain,text/css,text/javascript,application/javascript
     min-response-size: 1024
+
+dexapi:
+  import:
+    enable-web-interface: true
+    default-batch-size: 20
+    max-retries: 3
+    retry-delay-ms: 1000
+
+    poke-api:
+      base-url: "https://pokeapi.co/api/v2"
+      timeout-ms: 30000
+      enabled: true
 
 logging:
   level:

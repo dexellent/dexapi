@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DexAPI - Data Import</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'pokemon-blue': '#3b82f6',
+                        'pokemon-red': '#ef4444',
+                        'pokemon-yellow': '#f59e0b',
+                        'pokemon-green': '#10b981',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50">
+<div class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center py-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0">
+                        <h1 class="text-2xl font-bold text-gray-900">DexAPI</h1>
+                        <p class="text-sm text-gray-600">Data Import Tool</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="healthCheckBtn"
+                            class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                        Check Health
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <!-- Health Status Panel -->
+        <div id="healthPanel" class="bg-white rounded-lg shadow p-6 mb-6 hidden">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Importer Health Status</h3>
+            <div id="healthStatus" class="space-y-2">
+                <!-- Health status will be populated here -->
+            </div>
+        </div>
+
+        <!-- Import Form -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-900">Import Pokemon Data</h2>
+                <p class="mt-1 text-sm text-gray-600">
+                    Import Pokemon data from external sources into your DexAPI database.
+                </p>
+            </div>
+
+            <form id="importForm" class="px-6 py-4 space-y-6">
+                <!-- Source Selection -->
+                <div>
+                    <label for="source" class="block text-sm font-medium text-gray-700">Import Source</label>
+                    <select id="source" name="source"
+                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-pokemon-blue focus:border-pokemon-blue">
+                        <option value="">Select an import source...</option>
+                        <option th:each="importer : ${importers}"
+                                th:value="${importer}"
+                                th:text="${importer}"
+                                th:classappend="${#lists.contains(healthyImporters, importer)} ? 'text-green-700' : 'text-red-500'">
+                        </option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">
+                        <span class="text-green-600">Green</span> sources are healthy and available.
+                        <span class="text-red-500">Red</span> sources are unavailable.
+                    </p>
+                </div>
+
+                <!-- Import Parameters -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                        <label for="limit" class="block text-sm font-medium text-gray-700">Number of Pokemon</label>
+                        <input type="number" id="limit" name="limit" min="1" max="1000" value="20"
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-pokemon-blue focus:border-pokemon-blue">
+                        <p class="mt-1 text-xs text-gray-500">Maximum 1000 Pokemon per import</p>
+                    </div>
+
+                    <div>
+                        <label for="offset" class="block text-sm font-medium text-gray-700">Starting ID</label>
+                        <input type="number" id="offset" name="offset" min="0" value="0"
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-pokemon-blue focus:border-pokemon-blue">
+                        <p class="mt-1 text-xs text-gray-500">Start importing from this Pokemon ID</p>
+                    </div>
+
+                    <div>
+                        <label for="batchSize" class="block text-sm font-medium text-gray-700">Batch Size</label>
+                        <input type="number" id="batchSize" name="batchSize" min="1" max="50" value="20"
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-pokemon-blue focus:border-pokemon-blue">
+                        <p class="mt-1 text-xs text-gray-500">Process Pokemon in batches of this size</p>
+                    </div>
+                </div>
+
+                <!-- Import Summary -->
+                <div id="importSummary" class="bg-gray-50 rounded-md p-4 hidden">
+                    <h4 class="text-sm font-medium text-gray-900">Import Summary</h4>
+                    <dl class="mt-2 grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-3">
+                        <div>
+                            <dt class="text-xs font-medium text-gray-500">Source</dt>
+                            <dd id="summarySource" class="text-sm text-gray-900">-</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs font-medium text-gray-500">Pokemon Range</dt>
+                            <dd id="summaryRange" class="text-sm text-gray-900">-</dd>
+                        </div>
+                        <div>
+                            <dt class="text-xs font-medium text-gray-500">Total Count</dt>
+                            <dd id="summaryCount" class="text-sm text-gray-900">-</dd>
+                        </div>
+                    </dl>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex justify-end space-x-3">
+                    <button type="button" id="previewBtn"
+                            class="bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold py-2 px-4 rounded">
+                        Preview
+                    </button>
+                    <button type="submit" id="importBtn"
+                            class="bg-pokemon-blue hover:bg-blue-700 text-white font-bold py-2 px-4 rounded disabled:opacity-50">
+                        Start Import
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Import Progress -->
+        <div id="progressPanel" class="mt-6 bg-white rounded-lg shadow p-6 hidden">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Import Progress</h3>
+                <div id="progressSpinner"
+                     class="animate-spin rounded-full h-6 w-6 border-b-2 border-pokemon-blue"></div>
+            </div>
+
+            <div class="mb-4">
+                <div class="flex justify-between text-sm text-gray-600 mb-1">
+                    <span>Processing...</span>
+                    <span id="progressText">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div id="progressBar" class="bg-pokemon-blue h-2 rounded-full transition-all duration-300"
+                         style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div id="progressLogs" class="bg-gray-50 rounded-md p-3 h-32 overflow-y-auto text-sm font-mono">
+                <div class="text-gray-600">Import logs will appear here...</div>
+            </div>
+        </div>
+
+        <!-- Import Results -->
+        <div id="resultsPanel" class="mt-6 bg-white rounded-lg shadow p-6 hidden">
+            <h3 class="text-lg font-medium text-gray-900 mb-4">Import Results</h3>
+
+            <div id="resultsContent">
+                <!-- Results will be populated here -->
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+    let currentImportId = null;
+    let progressInterval = null;
+
+    // Health check functionality
+    document.getElementById('healthCheckBtn').addEventListener('click', async function () {
+        try {
+            const response = await fetch('/admin/import/health');
+            const data = await response.json();
+
+            const healthPanel = document.getElementById('healthPanel');
+            const healthStatus = document.getElementById('healthStatus');
+
+            healthStatus.innerHTML = '';
+
+            for (const [name, isHealthy] of Object.entries(data.importers)) {
+                const statusDiv = document.createElement('div');
+                statusDiv.className = 'flex items-center justify-between p-2 rounded';
+                statusDiv.innerHTML = `
+                        <span class="font-medium">${name}</span>
+                        <span class="px-2 py-1 rounded-full text-xs ${isHealthy ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                            ${isHealthy ? 'Healthy' : 'Unhealthy'}
+                        </span>
+                    `;
+                healthStatus.appendChild(statusDiv);
+            }
+
+            healthPanel.classList.remove('hidden');
+        } catch (error) {
+            console.error('Health check failed:', error);
+            alert('Failed to check importer health');
+        }
+    });
+
+    // Preview functionality
+    document.getElementById('previewBtn').addEventListener('click', function () {
+        const source = document.getElementById('source').value;
+        const limit = parseInt(document.getElementById('limit').value);
+        const offset = parseInt(document.getElementById('offset').value);
+
+        if (!source) {
+            alert('Please select an import source');
+            return;
+        }
+
+        const summary = document.getElementById('importSummary');
+        document.getElementById('summarySource').textContent = source;
+        document.getElementById('summaryRange').textContent = `${offset + 1} - ${offset + limit}`;
+        document.getElementById('summaryCount').textContent = limit;
+
+        summary.classList.remove('hidden');
+    });
+
+    // Import form submission
+    document.getElementById('importForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const formData = new FormData(e.target);
+        const params = new URLSearchParams(formData);
+
+        try {
+            const response = await fetch('/admin/import/start', {
+                method: 'POST',
+                body: params
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                currentImportId = result.importId;
+                showProgress();
+                startProgressPolling();
+            } else {
+                alert('Import failed: ' + result.error);
+            }
+        } catch (error) {
+            console.error('Import failed:', error);
+            alert('Import failed: ' + error.message);
+        }
+    });
+
+    function showProgress() {
+        document.getElementById('progressPanel').classList.remove('hidden');
+        document.getElementById('resultsPanel').classList.add('hidden');
+        document.getElementById('importBtn').disabled = true;
+    }
+
+    function hideProgress() {
+        document.getElementById('progressPanel').classList.add('hidden');
+        document.getElementById('importBtn').disabled = false;
+
+        if (progressInterval) {
+            clearInterval(progressInterval);
+            progressInterval = null;
+        }
+    }
+
+    function startProgressPolling() {
+        if (progressInterval) {
+            clearInterval(progressInterval);
+        }
+
+        progressInterval = setInterval(async function () {
+            if (!currentImportId) return;
+
+            try {
+                const response = await fetch(`/admin/import/status/${currentImportId}`);
+                const data = await response.json();
+
+                if (data.status === 'completed') {
+                    hideProgress();
+                    showResults(data.result);
+                    currentImportId = null;
+                } else {
+                    // Update progress display (simulated progress for now)
+                    updateProgressDisplay(data.message || 'Import in progress...');
+                }
+            } catch (error) {
+                console.error('Failed to check import status:', error);
+            }
+        }, 2000);
+    }
+
+    function updateProgressDisplay(message) {
+        const progressLogs = document.getElementById('progressLogs');
+        const logEntry = document.createElement('div');
+        logEntry.className = 'text-gray-600 mb-1';
+        logEntry.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+        progressLogs.appendChild(logEntry);
+        progressLogs.scrollTop = progressLogs.scrollHeight;
+    }
+
+    function showResults(result) {
+        const resultsPanel = document.getElementById('resultsPanel');
+        const resultsContent = document.getElementById('resultsContent');
+
+        const statusClass = result.success ? 'text-green-800 bg-green-100' : 'text-red-800 bg-red-100';
+        const statusText = result.success ? 'SUCCESS' : 'FAILED';
+
+        resultsContent.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-sm font-medium text-gray-500">Status</div>
+                        <div class="mt-1 text-lg font-semibold">
+                            <span class="px-2 py-1 rounded-full text-xs ${statusClass}">${statusText}</span>
+                        </div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-sm font-medium text-gray-500">Total Records</div>
+                        <div class="mt-1 text-lg font-semibold text-gray-900">${result.totalRecords}</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-sm font-medium text-gray-500">Successful</div>
+                        <div class="mt-1 text-lg font-semibold text-green-600">${result.successfulImports}</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-sm font-medium text-gray-500">Failed</div>
+                        <div class="mt-1 text-lg font-semibold text-red-600">${result.failedImports}</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-sm font-medium text-gray-500">Source</div>
+                        <div class="mt-1 text-sm text-gray-900">${result.source}</div>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-4">
+                        <div class="text-sm font-medium text-gray-500">Duration</div>
+                        <div class="mt-1 text-sm text-gray-900">${result.durationMs} ms</div>
+                    </div>
+                </div>
+
+                ${result.errors && result.errors.length > 0 ? `
+                    <div class="mt-4">
+                        <h4 class="text-sm font-medium text-red-700 mb-2">Errors (${result.errors.length})</h4>
+                        <div class="bg-red-50 rounded-md p-3 max-h-32 overflow-y-auto">
+                            <ul class="text-sm text-red-700 space-y-1">
+                                ${result.errors.map(error => `<li>• ${error}</li>`).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                ` : ''}
+            `;
+
+        resultsPanel.classList.remove('hidden');
+    }
+
+    // Initialize form validation
+    document.addEventListener('DOMContentLoaded', function () {
+        const sourceSelect = document.getElementById('source');
+        const importBtn = document.getElementById('importBtn');
+
+        function validateForm() {
+            const source = sourceSelect.value;
+            const limit = parseInt(document.getElementById('limit').value);
+
+            const isValid = source && limit >= 1 && limit <= 1000;
+            importBtn.disabled = !isValid;
+        }
+
+        sourceSelect.addEventListener('change', validateForm);
+        document.getElementById('limit').addEventListener('input', validateForm);
+        document.getElementById('offset').addEventListener('input', validateForm);
+
+        validateForm();
+    });
+</script>
+</body>
+</html>
