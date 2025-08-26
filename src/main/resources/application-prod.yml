@@ -1,23 +1,87 @@
 spring:
   datasource:
-    url: ${DATABASE_URL}
-
-  data:
-    redis:
-      url: ${REDIS_URL}
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 50
+      minimum-idle: 10
+      connection-timeout: 30000
+      idle-timeout: 300000
+      max-lifetime: 1200000
 
   jpa:
     show-sql: false
-    hibernate:
-      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+        use_sql_comments: false
+        jdbc:
+          batch_size: 50
+        connection:
+          provider_disables_autocommit: true
 
-  flyway:
-    enabled: true
+  cache:
+    type: redis
+    redis:
+      time-to-live: 1800000 # 30 minutes in production
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
+      ssl: ${REDIS_SSL:false}
+      jedis:
+        pool:
+          max-active: 20
+          max-idle: 10
+          min-idle: 2
 
 server:
   port: ${PORT:8080}
+  forward-headers-strategy: native
+  compression:
+    enabled: true
 
 logging:
   level:
-    root: INFO
-    com.dexellent.dexapi: INFO
+    dev.dexellent.dexapi: INFO
+    org.hibernate.SQL: WARN
+    org.springframework.cache: WARN
+  file:
+    name: logs/dexapi.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 30
+      total-size-cap: 1GB
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: never
+
+# Rate limiting configuration (custom properties)
+dexapi:
+  rate-limit:
+    enabled: true
+    requests-per-hour: 1000
+    burst-capacity: 100
+
+  cache:
+    pokemon:
+      ttl: 3600000 # 1 hour
+    moves:
+      ttl: 7200000 # 2 hours
+    types:
+      ttl: 86400000 # 24 hours
+
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://dexplorer.dexellent.dev,https://dexellent.dev}
+    allowed-methods: GET,POST,PUT,DELETE,OPTIONS
+    max-age: 3600
