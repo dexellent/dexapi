@@ -32,13 +32,13 @@ public class PokeApiPokemonResponse {
         private Integer baseStat;
 
         private Integer effort;
-        private NamedResource stat;
+        private PokeApiNamedResource stat;
     }
 
     @Data
     public static class PokemonType {
         private Integer slot;
-        private NamedResource type;
+        private PokeApiNamedResource type;
     }
 
     @Data
@@ -47,7 +47,7 @@ public class PokeApiPokemonResponse {
         private Boolean isHidden;
 
         private Integer slot;
-        private NamedResource ability;
+        private PokeApiNamedResource ability;
     }
 
     @Data
@@ -69,26 +69,5 @@ public class PokeApiPokemonResponse {
 
         @JsonProperty("back_shiny")
         private String backShiny;
-    }
-
-    @Data
-    public static class NamedResource {
-        private String name;
-        private String url;
-
-        public Long extractId() {
-            if (url == null) return null;
-            String[] parts = url.split("/");
-            for (int i = parts.length - 1; i >= 0; i--) {
-                if (!parts[i].isEmpty()) {
-                    try {
-                        return Long.parseLong(parts[i]);
-                    } catch (NumberFormatException e) {
-                        continue;
-                    }
-                }
-            }
-            return null;
-        }
     }
 }

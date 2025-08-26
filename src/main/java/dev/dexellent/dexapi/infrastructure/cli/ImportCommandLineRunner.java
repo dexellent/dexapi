@@ -70,10 +70,10 @@ public class ImportCommandLineRunner implements CommandLineRunner {
             }
 
             // Get limit
-            System.out.print("Number of Pokemon to import (1-1000): ");
+            System.out.print("Number of Pokemon to import (1-1025): ");
             int limit = scanner.nextInt();
 
-            if (limit < 1 || limit > 1000) {
+            if (limit < 1 || limit > 1025) {
                 System.out.println("Invalid limit. Must be between 1 and 1000. Exiting...");
                 return;
             }

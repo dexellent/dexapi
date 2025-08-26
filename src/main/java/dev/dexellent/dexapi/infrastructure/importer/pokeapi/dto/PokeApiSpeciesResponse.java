@@ -39,20 +39,20 @@ public class PokeApiSpeciesResponse {
     private Boolean formsSwitchable;
 
     @JsonProperty("growth_rate")
-    private NamedResource growthRate;
+    private PokeApiNamedResource growthRate;
 
-    private NamedResource color;
-    private NamedResource shape;
-    private NamedResource habitat;
-    private NamedResource generation;
+    private PokeApiNamedResource color;
+    private PokeApiNamedResource shape;
+    private PokeApiNamedResource habitat;
+    private PokeApiNamedResource generation;
 
     @JsonProperty("evolves_from_species")
-    private NamedResource evolvesFromSpecies;
+    private PokeApiNamedResource evolvesFromSpecies;
 
     @JsonProperty("flavor_text_entries")
     private List<FlavorTextEntry> flavorTextEntries;
 
-    private List<Name> names;
+    private List<PokeApiName> names;
     private List<Genus> genera;
 
     @Data
@@ -60,40 +60,13 @@ public class PokeApiSpeciesResponse {
         @JsonProperty("flavor_text")
         private String flavorText;
 
-        private NamedResource language;
-        private NamedResource version;
-    }
-
-    @Data
-    public static class Name {
-        private String name;
-        private NamedResource language;
+        private PokeApiNamedResource language;
+        private PokeApiNamedResource version;
     }
 
     @Data
     public static class Genus {
         private String genus;
-        private NamedResource language;
-    }
-
-    @Data
-    public static class NamedResource {
-        private String name;
-        private String url;
-
-        public Long extractId() {
-            if (url == null) return null;
-            String[] parts = url.split("/");
-            for (int i = parts.length - 1; i >= 0; i--) {
-                if (!parts[i].isEmpty()) {
-                    try {
-                        return Long.parseLong(parts[i]);
-                    } catch (NumberFormatException e) {
-                        continue;
-                    }
-                }
-            }
-            return null;
-        }
+        private PokeApiNamedResource language;
     }
 }

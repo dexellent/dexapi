@@ -1,8 +1,10 @@
 package dev.dexellent.dexapi.infrastructure.importer.pokeapi;
 
 import dev.dexellent.dexapi.infrastructure.importer.config.ImportConfig;
+import dev.dexellent.dexapi.infrastructure.importer.pokeapi.dto.PokeApiGenerationResponse;
 import dev.dexellent.dexapi.infrastructure.importer.pokeapi.dto.PokeApiPokemonResponse;
 import dev.dexellent.dexapi.infrastructure.importer.pokeapi.dto.PokeApiSpeciesResponse;
+import dev.dexellent.dexapi.infrastructure.importer.pokeapi.dto.PokeApiTypeResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.stereotype.Component;
@@ -41,6 +43,26 @@ public class PokeApiClient {
             return restTemplate.getForObject(url, PokeApiSpeciesResponse.class);
         } catch (Exception e) {
             log.error("Failed to fetch Species with id {}: {}", id, e.getMessage());
+            throw e;
+        }
+    }
+
+    public PokeApiTypeResponse getType(int id) {
+        String url = importConfig.getPokeApi().getBaseUrl() + "/type/" + id;
+        try {
+            return restTemplate.getForObject(url, PokeApiTypeResponse.class);
+        } catch (Exception e) {
+            log.error("Failed to fetch Type with id {}: {}", id, e.getMessage());
+            throw e;
+        }
+    }
+
+    public PokeApiGenerationResponse getGeneration(int id) {
+        String url = importConfig.getPokeApi().getBaseUrl() + "/generation/" + id;
+        try {
+            return restTemplate.getForObject(url, PokeApiGenerationResponse.class);
+        } catch (Exception e) {
+            log.error("Failed to fetch Generation with id {}: {}", id, e.getMessage());
             throw e;
         }
     }

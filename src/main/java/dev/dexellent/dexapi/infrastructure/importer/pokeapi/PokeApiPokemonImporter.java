@@ -6,6 +6,7 @@ import dev.dexellent.dexapi.domain.repository.PokemonRepository;
 import dev.dexellent.dexapi.infrastructure.importer.DataImporter;
 import dev.dexellent.dexapi.infrastructure.importer.ImportResult;
 import dev.dexellent.dexapi.infrastructure.importer.config.ImportConfig;
+import dev.dexellent.dexapi.infrastructure.importer.pokeapi.dto.PokeApiName;
 import dev.dexellent.dexapi.infrastructure.importer.pokeapi.dto.PokeApiPokemonResponse;
 import dev.dexellent.dexapi.infrastructure.importer.pokeapi.dto.PokeApiSpeciesResponse;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +30,7 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
 
     @Override
     public String getSourceName() {
-        return "PokeAPI v2";
+        return "PokeAPI v2 - Pokemon";
     }
 
     @Override
@@ -43,12 +44,10 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
                     importedPokemon.add(imported);
                 }
 
-                // Add delay to respect API rate limits
-                Thread.sleep(150); // Increased delay to be more respectful
+                Thread.sleep(150); // Rate limiting
 
             } catch (Exception e) {
                 log.error("Failed to import Pokemon #{}: {}", i, e.getMessage());
-                // Continue with next Pokemon instead of failing completely
             }
         }
 
@@ -60,7 +59,6 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
         try {
             log.debug("Importing Pokemon #{}", pokemonId);
 
-            // Skip if already exists by national dex number
             if (pokemonRepository.findByNationalDexNumber(pokemonId).isPresent()) {
                 log.debug("Pokemon #{} already exists, skipping", pokemonId);
                 return null;
@@ -76,6 +74,10 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
 
             Pokemon pokemon = mapToPokemon(pokemonData, speciesData);
             Pokemon savedPokemon = pokemonRepository.save(pokemon);
+
+            // Add translations AFTER saving the Pokemon entity
+            addTranslations(savedPokemon, pokemonData, speciesData);
+            pokemonRepository.save(savedPokemon);
 
             log.info("Successfully imported Pokemon #{}: {}", pokemonId, pokemon.getIdentifier());
             return savedPokemon;
@@ -128,7 +130,6 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
     }
 
     private Pokemon mapToPokemon(PokeApiPokemonResponse pokemonData, PokeApiSpeciesResponse speciesData) {
-        // Create basic Pokemon entity without relations first
         Pokemon pokemon = Pokemon.builder()
                 .nationalDexNumber(pokemonData.getId().intValue())
                 .identifier(pokemonData.getName())
@@ -192,7 +193,7 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
         return pokemon;
     }
 
-    // Separate method to add translations after Pokemon is saved
+    // Enhanced translation method
     private void addTranslations(Pokemon savedPokemon, PokeApiPokemonResponse pokemonData,
                                  PokeApiSpeciesResponse speciesData) {
         if (speciesData == null || speciesData.getNames() == null) {
@@ -236,7 +237,7 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
         translations.add(englishTranslation);
 
         // Add other language translations
-        for (PokeApiSpeciesResponse.Name name : speciesData.getNames()) {
+        for (PokeApiName name : speciesData.getNames()) {
             Language language = mapLanguage(name.getLanguage().getName());
             if (language != null && language != Language.EN) {
                 PokemonTranslation translation = PokemonTranslation.builder()
@@ -244,6 +245,24 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
                         .language(language)
                         .name(name.getName())
                         .build();
+
+                // Add genus for this language if available
+                if (speciesData.getGenera() != null) {
+                    speciesData.getGenera().stream()
+                            .filter(genus -> name.getLanguage().getName().equals(genus.getLanguage().getName()))
+                            .findFirst()
+                            .ifPresent(genus -> translation.setSpecies(genus.getGenus()));
+                }
+
+                // Add flavor text for this language if available
+                if (speciesData.getFlavorTextEntries() != null) {
+                    speciesData.getFlavorTextEntries().stream()
+                            .filter(entry -> name.getLanguage().getName().equals(entry.getLanguage().getName()))
+                            .findFirst()
+                            .ifPresent(entry -> translation.setDescription(
+                                    cleanFlavorText(entry.getFlavorText())
+                            ));
+                }
 
                 translations.add(translation);
             }
