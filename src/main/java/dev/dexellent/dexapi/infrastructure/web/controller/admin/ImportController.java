@@ -35,6 +35,130 @@ public class ImportController {
         return "import/index";
     }
 
+    @PostMapping("/start/full")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> startFullImport(
+            @RequestParam int pokemonLimit,
+            @RequestParam(defaultValue = "20") int batchSize) {
+
+        Map<String, Object> response = new HashMap<>();
+
+        if (pokemonLimit < 1 || pokemonLimit > 1025) {
+            response.put("success", false);
+            response.put("error", "Pokemon limit must be between 1 and 1025");
+            return ResponseEntity.badRequest().body(response);
+        }
+
+        String importId = generateImportId();
+
+        // Start full import asynchronously
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                log.info("Starting full import: {} pokemon", pokemonLimit);
+
+                // Step 1: Import Generations
+                log.info("Step 1: Importing generations");
+                ImportResult genResult = importService.importGenerations(9, 0);
+                if (!genResult.isSuccess()) {
+                    throw new RuntimeException("Generation import failed: " + String.join(", ", genResult.getErrors()));
+                }
+
+                // Step 2: Import Types
+                log.info("Step 2: Importing types");
+                ImportResult typeResult = importService.importTypes(18, 0);
+                if (!typeResult.isSuccess()) {
+                    throw new RuntimeException("Type import failed: " + String.join(", ", typeResult.getErrors()));
+                }
+
+                // Step 3: Import Pokemon
+                log.info("Step 3: Importing {} pokemon", pokemonLimit);
+                ImportResult pokemonResult = importService.importPokemonBatch("PokeAPI v2 - Pokemon", pokemonLimit, batchSize);
+
+                // Combine results
+                return ImportResult.builder()
+                        .success(pokemonResult.isSuccess())
+                        .totalRecords(genResult.getSuccessfulImports() + typeResult.getSuccessfulImports() + pokemonResult.getTotalRecords())
+                        .successfulImports(genResult.getSuccessfulImports() + typeResult.getSuccessfulImports() + pokemonResult.getSuccessfulImports())
+                        .failedImports(pokemonResult.getFailedImports())
+                        .errors(pokemonResult.getErrors())
+                        .source("Full Import (Gen + Types + Pokemon)")
+                        .startTime(genResult.getStartTime())
+                        .endTime(pokemonResult.getEndTime())
+                        .build();
+
+            } catch (Exception e) {
+                log.error("Full import failed", e);
+                return ImportResult.builder()
+                        .success(false)
+                        .errors(java.util.List.of("Full import failed: " + e.getMessage()))
+                        .source("Full Import")
+                        .build();
+            }
+        }).thenAccept(result -> {
+            activeImports.put(importId, result);
+            log.info("Full import {} completed: {} successful, {} failed",
+                    importId, result.getSuccessfulImports(), result.getFailedImports());
+        });
+
+        response.put("success", true);
+        response.put("importId", importId);
+        response.put("message", "Full import started successfully");
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/start/generations")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> startGenerationImport() {
+        String importId = generateImportId();
+
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return importService.importGenerations(9, 0);
+            } catch (Exception e) {
+                log.error("Generation import failed", e);
+                return ImportResult.builder()
+                        .success(false)
+                        .errors(java.util.List.of("Generation import failed: " + e.getMessage()))
+                        .source("PokeAPI v2 - Generations")
+                        .build();
+            }
+        }).thenAccept(result -> activeImports.put(importId, result));
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("importId", importId);
+        response.put("message", "Generation import started successfully");
+
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/start/types")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> startTypeImport() {
+        String importId = generateImportId();
+
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return importService.importTypes(18, 0);
+            } catch (Exception e) {
+                log.error("Type import failed", e);
+                return ImportResult.builder()
+                        .success(false)
+                        .errors(java.util.List.of("Type import failed: " + e.getMessage()))
+                        .source("PokeAPI v2 - Types")
+                        .build();
+            }
+        }).thenAccept(result -> activeImports.put(importId, result));
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", true);
+        response.put("importId", importId);
+        response.put("message", "Type import started successfully");
+
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/start")
     @ResponseBody
     public ResponseEntity<Map<String, Object>> startImport(
@@ -46,9 +170,9 @@ public class ImportController {
         Map<String, Object> response = new HashMap<>();
 
         // Validate input
-        if (limit < 1 || limit > 1000) {
+        if (limit < 1 || limit > 1025) {
             response.put("success", false);
-            response.put("error", "Limit must be between 1 and 1000");
+            response.put("error", "Limit must be between 1 and 1025");
             return ResponseEntity.badRequest().body(response);
         }
 

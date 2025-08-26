@@ -61,6 +61,22 @@
             </div>
 
             <form id="importForm" class="px-6 py-4 space-y-6">
+                <!-- Import Type Selection -->
+                <div>
+                    <label for="importType" class="block text-sm font-medium text-gray-700">Import Type</label>
+                    <select id="importType" name="importType"
+                            class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-pokemon-blue focus:border-pokemon-blue">
+                        <option value="">Select import type...</option>
+                        <option value="full">Full Import (Generations → Types → Pokemon)</option>
+                        <option value="generations">Generations Only (9 generations)</option>
+                        <option value="types">Types Only (18 types)</option>
+                        <option value="pokemon">Pokemon Only</option>
+                    </select>
+                    <p class="mt-1 text-xs text-gray-500">
+                        Choose the type of data to import. Full import is recommended for new databases.
+                    </p>
+                </div>
+
                 <!-- Source Selection -->
                 <div>
                     <label for="source" class="block text-sm font-medium text-gray-700">Import Source</label>
@@ -83,9 +99,9 @@
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
                         <label for="limit" class="block text-sm font-medium text-gray-700">Number of Pokemon</label>
-                        <input type="number" id="limit" name="limit" min="1" max="1000" value="20"
+                        <input type="number" id="limit" name="limit" min="1" max="1025" value="20"
                                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-pokemon-blue focus:border-pokemon-blue">
-                        <p class="mt-1 text-xs text-gray-500">Maximum 1000 Pokemon per import</p>
+                        <p class="mt-1 text-xs text-gray-500">Maximum 1025 Pokemon per import</p>
                     </div>
 
                     <div>

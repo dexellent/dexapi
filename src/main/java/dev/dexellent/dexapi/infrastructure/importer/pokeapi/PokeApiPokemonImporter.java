@@ -2,7 +2,9 @@ package dev.dexellent.dexapi.infrastructure.importer.pokeapi;
 
 import dev.dexellent.dexapi.domain.model.*;
 import dev.dexellent.dexapi.domain.model.enums.Language;
+import dev.dexellent.dexapi.domain.repository.GenerationRepository;
 import dev.dexellent.dexapi.domain.repository.PokemonRepository;
+import dev.dexellent.dexapi.domain.repository.TypeRepository;
 import dev.dexellent.dexapi.infrastructure.importer.DataImporter;
 import dev.dexellent.dexapi.infrastructure.importer.ImportResult;
 import dev.dexellent.dexapi.infrastructure.importer.config.ImportConfig;
@@ -26,6 +28,8 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
 
     private final PokeApiClient pokeApiClient;
     private final PokemonRepository pokemonRepository;
+    private final TypeRepository typeRepository;
+    private final GenerationRepository generationRepository;
     private final ImportConfig importConfig;
 
     @Override
@@ -73,10 +77,18 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
             PokeApiSpeciesResponse speciesData = pokeApiClient.getSpecies(pokemonId);
 
             Pokemon pokemon = mapToPokemon(pokemonData, speciesData);
+
+            // Link with generation based on species data
+            linkGeneration(pokemon, speciesData);
+
             Pokemon savedPokemon = pokemonRepository.save(pokemon);
+
+            // Add types AFTER saving the Pokemon entity
+            addTypes(savedPokemon, pokemonData);
 
             // Add translations AFTER saving the Pokemon entity
             addTranslations(savedPokemon, pokemonData, speciesData);
+
             pokemonRepository.save(savedPokemon);
 
             log.info("Successfully imported Pokemon #{}: {}", pokemonId, pokemon.getIdentifier());
@@ -193,7 +205,47 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
         return pokemon;
     }
 
-    // Enhanced translation method
+    private void linkGeneration(Pokemon pokemon, PokeApiSpeciesResponse speciesData) {
+        if (speciesData == null || speciesData.getGeneration() == null) {
+            // Fallback to generation based on national dex number
+            int genNumber = determineGenerationByDexNumber(pokemon.getNationalDexNumber());
+            generationRepository.findByNumber(genNumber)
+                    .ifPresent(pokemon::setGeneration);
+            return;
+        }
+
+        // Extract generation number from URL
+        Long generationId = extractIdFromUrl(speciesData.getGeneration().getUrl());
+        if (generationId != null) {
+            generationRepository.findByNumber(generationId.intValue())
+                    .ifPresent(pokemon::setGeneration);
+        }
+    }
+
+    private void addTypes(Pokemon savedPokemon, PokeApiPokemonResponse pokemonData) {
+        if (pokemonData.getTypes() == null || pokemonData.getTypes().isEmpty()) {
+            return;
+        }
+
+        List<PokemonType> pokemonTypes = new ArrayList<>();
+
+        for (PokeApiPokemonResponse.PokemonType pokeApiType : pokemonData.getTypes()) {
+            String typeName = pokeApiType.getType().getName();
+
+            typeRepository.findByIdentifier(typeName).ifPresent(type -> {
+                PokemonType pokemonType = PokemonType.builder()
+                        .pokemon(savedPokemon)
+                        .type(type)
+                        .slot(pokeApiType.getSlot())
+                        .build();
+
+                pokemonTypes.add(pokemonType);
+            });
+        }
+
+        savedPokemon.setTypes(pokemonTypes);
+    }
+
     private void addTranslations(Pokemon savedPokemon, PokeApiPokemonResponse pokemonData,
                                  PokeApiSpeciesResponse speciesData) {
         if (speciesData == null || speciesData.getNames() == null) {
@@ -238,7 +290,7 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
 
         // Add other language translations
         for (PokeApiName name : speciesData.getNames()) {
-            Language language = mapLanguage(name.getLanguage().getName());
+            Language language = Util.mapLanguage(name.getLanguage().getName());
             if (language != null && language != Language.EN) {
                 PokemonTranslation translation = PokemonTranslation.builder()
                         .pokemon(savedPokemon)
@@ -271,18 +323,31 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
         savedPokemon.setTranslations(translations);
     }
 
-    private Language mapLanguage(String pokeApiLanguage) {
-        return switch (pokeApiLanguage) {
-            case "en" -> Language.EN;
-            case "fr" -> Language.FR;
-            case "ja", "ja-Hrkt" -> Language.JA;
-            case "es" -> Language.ES;
-            case "de" -> Language.DE;
-            case "it" -> Language.IT;
-            case "ko" -> Language.KO;
-            case "zh", "zh-Hant", "zh-Hans" -> Language.ZH;
-            default -> null;
-        };
+    private int determineGenerationByDexNumber(int nationalDexNumber) {
+        if (nationalDexNumber <= 151) return 1;
+        if (nationalDexNumber <= 251) return 2;
+        if (nationalDexNumber <= 386) return 3;
+        if (nationalDexNumber <= 493) return 4;
+        if (nationalDexNumber <= 649) return 5;
+        if (nationalDexNumber <= 721) return 6;
+        if (nationalDexNumber <= 809) return 7;
+        if (nationalDexNumber <= 905) return 8;
+        return 9; // Gen 9 and beyond
+    }
+
+    private Long extractIdFromUrl(String url) {
+        if (url == null) return null;
+        String[] parts = url.split("/");
+        for (int i = parts.length - 1; i >= 0; i--) {
+            if (!parts[i].isEmpty()) {
+                try {
+                    return Long.parseLong(parts[i]);
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+            }
+        }
+        return null;
     }
 
     private String capitalizeFirst(String str) {
