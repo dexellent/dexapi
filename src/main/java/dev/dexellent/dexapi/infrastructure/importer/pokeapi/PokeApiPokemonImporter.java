@@ -18,8 +18,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Component
 @RequiredArgsConstructor
@@ -63,9 +62,19 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
         try {
             log.debug("Importing Pokemon #{}", pokemonId);
 
-            if (pokemonRepository.findByNationalDexNumber(pokemonId).isPresent()) {
-                log.debug("Pokemon #{} already exists, skipping", pokemonId);
-                return null;
+            // Check if Pokemon already exists
+            Optional<Pokemon> existingPokemon = pokemonRepository.findByNationalDexNumber(pokemonId);
+            if (existingPokemon.isPresent()) {
+                Pokemon pokemon = existingPokemon.get();
+
+                // Check if it already has translations
+                if (pokemon.getTranslations() != null && !pokemon.getTranslations().isEmpty()) {
+                    log.debug("Pokemon #{} already exists with translations, skipping", pokemonId);
+                    return null;
+                } else {
+                    log.debug("Pokemon #{} exists but has no translations, will add them", pokemonId);
+                    // Continue with the import to add translations
+                }
             }
 
             PokeApiPokemonResponse pokemonData = pokeApiClient.getPokemon(pokemonId);
@@ -76,23 +85,36 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
 
             PokeApiSpeciesResponse speciesData = pokeApiClient.getSpecies(pokemonId);
 
-            Pokemon pokemon = mapToPokemon(pokemonData, speciesData);
+            Pokemon pokemon;
+            if (existingPokemon.isPresent()) {
+                // Use existing Pokemon, just add translations and types
+                pokemon = existingPokemon.get();
 
-            // Link with generation based on species data
-            linkGeneration(pokemon, speciesData);
+                // Add types if they don't exist
+                if (pokemon.getTypes() == null || pokemon.getTypes().isEmpty()) {
+                    addTypes(pokemon, pokemonData);
+                }
 
-            Pokemon savedPokemon = pokemonRepository.save(pokemon);
+                // Add translations
+                addTranslations(pokemon, pokemonData, speciesData);
+                pokemon = pokemonRepository.save(pokemon);
+            } else {
+                // Create new Pokemon
+                pokemon = mapToPokemon(pokemonData, speciesData);
+                linkGeneration(pokemon, speciesData);
+                Pokemon savedPokemon = pokemonRepository.save(pokemon);
 
-            // Add types AFTER saving the Pokemon entity
-            addTypes(savedPokemon, pokemonData);
+                // Add types AFTER saving the Pokemon entity
+                addTypes(savedPokemon, pokemonData);
 
-            // Add translations AFTER saving the Pokemon entity
-            addTranslations(savedPokemon, pokemonData, speciesData);
+                // Add translations AFTER saving the Pokemon entity
+                addTranslations(savedPokemon, pokemonData, speciesData);
 
-            pokemonRepository.save(savedPokemon);
+                pokemon = pokemonRepository.save(savedPokemon);
+            }
 
             log.info("Successfully imported Pokemon #{}: {}", pokemonId, pokemon.getIdentifier());
-            return savedPokemon;
+            return pokemon;
 
         } catch (Exception e) {
             log.error("Failed to import Pokemon #{}: {}", pokemonId, e.getMessage());
@@ -249,49 +271,54 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
     private void addTranslations(Pokemon savedPokemon, PokeApiPokemonResponse pokemonData,
                                  PokeApiSpeciesResponse speciesData) {
         if (speciesData == null || speciesData.getNames() == null) {
-            // Add at least English translation
+            // Add at least English translation if it doesn't exist
+            addTranslationIfNotExists(savedPokemon, Language.EN, capitalizeFirst(pokemonData.getName()),
+                    null, null, null);
+            return;
+        }
+
+        // Use a Map to avoid duplicate languages and handle existing translations
+        Map<Language, PokemonTranslation> existingTranslations = new HashMap<>();
+
+        // Load existing translations into map
+        if (savedPokemon.getTranslations() != null) {
+            for (PokemonTranslation existing : savedPokemon.getTranslations()) {
+                existingTranslations.put(existing.getLanguage(), existing);
+            }
+        }
+
+        // English translation (default)
+        if (!existingTranslations.containsKey(Language.EN)) {
             PokemonTranslation englishTranslation = PokemonTranslation.builder()
                     .pokemon(savedPokemon)
                     .language(Language.EN)
                     .name(capitalizeFirst(pokemonData.getName()))
                     .build();
 
-            savedPokemon.setTranslations(List.of(englishTranslation));
-            return;
+            // Add genus and description for English
+            if (speciesData.getGenera() != null) {
+                speciesData.getGenera().stream()
+                        .filter(genus -> "en".equals(genus.getLanguage().getName()))
+                        .findFirst()
+                        .ifPresent(genus -> englishTranslation.setSpecies(genus.getGenus()));
+            }
+
+            if (speciesData.getFlavorTextEntries() != null) {
+                speciesData.getFlavorTextEntries().stream()
+                        .filter(entry -> "en".equals(entry.getLanguage().getName()))
+                        .findFirst()
+                        .ifPresent(entry -> englishTranslation.setDescription(
+                                cleanFlavorText(entry.getFlavorText())
+                        ));
+            }
+
+            existingTranslations.put(Language.EN, englishTranslation);
         }
-
-        List<PokemonTranslation> translations = new ArrayList<>();
-
-        // English translation (default)
-        PokemonTranslation englishTranslation = PokemonTranslation.builder()
-                .pokemon(savedPokemon)
-                .language(Language.EN)
-                .name(capitalizeFirst(pokemonData.getName()))
-                .build();
-
-        // Add genus and description for English
-        if (speciesData.getGenera() != null) {
-            speciesData.getGenera().stream()
-                    .filter(genus -> "en".equals(genus.getLanguage().getName()))
-                    .findFirst()
-                    .ifPresent(genus -> englishTranslation.setSpecies(genus.getGenus()));
-        }
-
-        if (speciesData.getFlavorTextEntries() != null) {
-            speciesData.getFlavorTextEntries().stream()
-                    .filter(entry -> "en".equals(entry.getLanguage().getName()))
-                    .findFirst()
-                    .ifPresent(entry -> englishTranslation.setDescription(
-                            cleanFlavorText(entry.getFlavorText())
-                    ));
-        }
-
-        translations.add(englishTranslation);
 
         // Add other language translations
         for (PokeApiName name : speciesData.getNames()) {
             Language language = Util.mapLanguage(name.getLanguage().getName());
-            if (language != null && language != Language.EN) {
+            if (language != null && !existingTranslations.containsKey(language)) {
                 PokemonTranslation translation = PokemonTranslation.builder()
                         .pokemon(savedPokemon)
                         .language(language)
@@ -316,11 +343,46 @@ public class PokeApiPokemonImporter implements DataImporter<Pokemon> {
                             ));
                 }
 
-                translations.add(translation);
+                existingTranslations.put(language, translation);
+            } else if (language != null) {
+                log.debug("Translation for language {} already exists for Pokemon #{}, skipping",
+                        language.getCode(), savedPokemon.getNationalDexNumber());
             }
         }
 
-        savedPokemon.setTranslations(translations);
+        // Convert map values to list and set on Pokemon
+        List<PokemonTranslation> allTranslations = new ArrayList<>(existingTranslations.values());
+        savedPokemon.setTranslations(allTranslations);
+
+        log.debug("Pokemon #{} now has {} translations", savedPokemon.getNationalDexNumber(), allTranslations.size());
+    }
+
+    private void addTranslationIfNotExists(Pokemon pokemon, Language language, String name,
+                                           String species, String description, String habitat) {
+        // Check if translation already exists
+        if (pokemon.getTranslations() != null) {
+            boolean exists = pokemon.getTranslations().stream()
+                    .anyMatch(t -> t.getLanguage() == language);
+            if (exists) {
+                log.debug("Translation for language {} already exists for Pokemon #{}, skipping",
+                        language.getCode(), pokemon.getNationalDexNumber());
+                return;
+            }
+        }
+
+        PokemonTranslation translation = PokemonTranslation.builder()
+                .pokemon(pokemon)
+                .language(language)
+                .name(name)
+                .species(species)
+                .description(description)
+                .habitat(habitat)
+                .build();
+
+        if (pokemon.getTranslations() == null) {
+            pokemon.setTranslations(new ArrayList<>());
+        }
+        pokemon.getTranslations().add(translation);
     }
 
     private int determineGenerationByDexNumber(int nationalDexNumber) {
